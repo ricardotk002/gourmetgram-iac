@@ -1,7 +1,4 @@
 ---
-# Disable NodeLocalDNS - creates a bad resolve loop
-enable_nodelocaldns: false
-
 # Container engine - change from default containerd
 container_manager: docker
 

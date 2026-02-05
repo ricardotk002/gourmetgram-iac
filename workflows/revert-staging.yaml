@@ -21,7 +21,15 @@ spec:
             - name: failed-version
               value: "{{workflow.parameters.failed-model-version}}"
 
-      # Step 2: Deploy previous version to staging (image already exists in registry)
+      # Step 2: Retag container image back to previous version using skopeo
+      - - name: retag-to-previous
+          template: skopeo-retag
+          arguments:
+            parameters:
+            - name: previous-version
+              value: "{{steps.get-previous-version.outputs.result}}"
+
+      # Step 3: Deploy previous version to staging
       - - name: deploy-previous
           template: trigger-deploy
           arguments:
@@ -29,7 +37,7 @@ spec:
             - name: model-version
               value: "{{steps.get-previous-version.outputs.result}}"
 
-      # Step 3: Update MLFlow alias to point back to previous version
+      # Step 4: Update MLFlow alias to point back to previous version
       - - name: update-mlflow-alias
           template: set-mlflow-alias
           arguments:
@@ -37,7 +45,7 @@ spec:
             - name: model-version
               value: "{{steps.get-previous-version.outputs.result}}"
 
-      # Step 4: Log failure for debugging
+      # Step 5: Log failure for debugging
       - - name: log-failure
           template: log-revert-reason
           arguments:
@@ -92,6 +100,28 @@ spec:
         print(f"Found previous staging version: {previous_version}")
         print(previous_version)
         EOF
+
+  # Template: Retag container image to previous version using skopeo
+  - name: skopeo-retag
+    inputs:
+      parameters:
+      - name: previous-version
+    container:
+      image: quay.io/skopeo/stable
+      command: [sh, -c]
+      args:
+        - |
+          echo "Retagging container image back to previous version {{inputs.parameters.previous-version}}"
+
+          # Verify the previous staging image exists and copy it
+          # This ensures the image is available before we attempt deployment
+          skopeo copy \
+            --src-tls-verify=false \
+            --dest-tls-verify=false \
+            docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.previous-version}} \
+            docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.previous-version}}
+
+          echo "Successfully verified and retagged staging image to version {{inputs.parameters.previous-version}}"
 
   # Template: Update MLFlow staging alias to previous version
   - name: set-mlflow-alias

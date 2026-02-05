@@ -21,8 +21,8 @@ spec:
             - name: failed-version
               value: "{{workflow.parameters.failed-model-version}}"
 
-      # Step 2: Retag container image back to previous version using skopeo
-      - - name: retag-to-previous
+      # Step 2: Verify previous container image exists using skopeo
+      - - name: verify-previous-image
           template: skopeo-retag
           arguments:
             parameters:
@@ -101,7 +101,7 @@ spec:
         print(previous_version)
         EOF
 
-  # Template: Retag container image to previous version using skopeo
+  # Template: Verify previous container image exists using skopeo
   - name: skopeo-retag
     inputs:
       parameters:
@@ -111,17 +111,16 @@ spec:
       command: [sh, -c]
       args:
         - |
-          echo "Retagging container image back to previous version {{inputs.parameters.previous-version}}"
+          echo "Verifying previous staging image exists: staging-1.0.{{inputs.parameters.previous-version}}"
 
-          # Verify the previous staging image exists and copy it
-          # This ensures the image is available before we attempt deployment
-          skopeo copy \
-            --src-tls-verify=false \
-            --dest-tls-verify=false \
-            docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.previous-version}} \
+          # Inspect the previous staging image to verify it exists in the registry
+          # This will fail fast with a clear error if the image is missing
+          skopeo inspect \
+            --tls-verify=false \
             docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.previous-version}}
 
-          echo "Successfully verified and retagged staging image to version {{inputs.parameters.previous-version}}"
+          echo "✓ Previous staging image verified: staging-1.0.{{inputs.parameters.previous-version}}"
+          echo "Ready to revert staging to this version"
 
   # Template: Update MLFlow staging alias to previous version
   - name: set-mlflow-alias

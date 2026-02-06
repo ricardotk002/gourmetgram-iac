@@ -7,7 +7,7 @@ spec:
   arguments:
     parameters:
     - name: branch
-      value: k8s-pod-training
+      value: mlops
   volumeClaimTemplates:
   - metadata:
       name: workdir

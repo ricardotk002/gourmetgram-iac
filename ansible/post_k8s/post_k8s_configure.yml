@@ -54,18 +54,12 @@
 
 - name: Install Gateway API CRDs
   hosts: node1
-  gather_facts: false
-
-  vars:
-    gateway_api_version: v1.1.0
-    kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) }}"
-
+  become: yes
   tasks:
-    - name: Apply Gateway API CRDs
-      kubernetes.core.k8s:
-        kubeconfig: "{{ kubeconfig }}"
-        state: present
-        src: "https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml"
+    - name: Apply Gateway API CRDs with kubectl
+      command: >
+        kubectl apply -f
+        https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
 
 - name: Disable IPv6 on Internet-facing interface
   hosts: all

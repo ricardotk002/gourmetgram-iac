@@ -51,8 +51,6 @@
     - name: Show user groups
       debug:
         msg: "{{ cc_id.stdout }}"
-
-
 ---
 - name: Install Gateway API CRDs
   hosts: node1

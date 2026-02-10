@@ -114,6 +114,7 @@
         --path {{ app_path }} \
         --dest-server https://kubernetes.default.svc \
         --dest-namespace "" \
+        --helm-set-string gateway.externalIP={{ external_ip }} \
         --helm-set-string minio.externalIP={{ external_ip }} \
         --helm-set-string mlflow.externalIP={{ external_ip }} \
         --port-forward --port-forward-namespace=argocd \
@@ -125,6 +126,7 @@
       command: >
         argocd app set {{ app_name }} \
         --dest-namespace "" \
+        --helm-set-string gateway.externalIP={{ external_ip }} \
         --helm-set-string minio.externalIP={{ external_ip }} \
         --helm-set-string mlflow.externalIP={{ external_ip }} \
         --port-forward --port-forward-namespace=argocd

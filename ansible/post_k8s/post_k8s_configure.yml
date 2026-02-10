@@ -51,7 +51,7 @@
     - name: Show user groups
       debug:
         msg: "{{ cc_id.stdout }}"
----
+
 - name: Install Gateway API CRDs
   hosts: node1
   gather_facts: false
@@ -61,13 +61,12 @@
     kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) }}"
 
   tasks:
-  - name: Apply Gateway API CRDs
-    kubernetes.core.k8s:
-      kubeconfig: "{{ kubeconfig }}"
-      state: present
-      src: "https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml"
+    - name: Apply Gateway API CRDs
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        src: "https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml"
 
----
 - name: Disable IPv6 on Internet-facing interface
   hosts: all
   become: true
@@ -133,7 +132,6 @@
     - name: Wait for CoreDNS to be ready
       shell: kubectl -n kube-system rollout status deployment/coredns --timeout=120s
 
----
 - name: Setup Kubernetes Dashboard
   hosts: node1
   become: yes

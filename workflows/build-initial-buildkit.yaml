@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: buildkit-rootless-pvc-build-
+  generateName: build-initial-container-image-
 spec:
   entrypoint: buildkit-rootless-build-flow
 

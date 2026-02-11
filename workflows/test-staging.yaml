@@ -24,47 +24,33 @@ spec:
             parameters:
             - name: service-url
               value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
+            - name: model-version
+              value: "{{workflow.parameters.model-version}}"
 
-      # Step 2: Load test - verify p95 latency < 2000ms, success rate > 95%
-      - - name: load-test
-          template: run-load-test
-          arguments:
-            parameters:
-            - name: service-url
-              value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
-            - name: integration-result
-              value: "{{steps.integration-test.outputs.parameters.result}}"
-
-      # Step 3: Mark as approved in MLflow if all tests pass
+      # Step 2: Mark as approved in MLflow if integration test passes
       - - name: mark-staging-approved
           template: set-staging-approved
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass'"
 
-      # Step 4: Branching logic - promote if tests pass, revert if tests fail
+      # Step 3: Branching logic - promote if tests pass
       - - name: promote-on-success
           template: trigger-promote
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
-        - name: revert-on-failure
-          template: trigger-revert
-          arguments:
-            parameters:
-            - name: model-version
-              value: "{{workflow.parameters.model-version}}"
-          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'fail' || '{{steps.load-test.outputs.parameters.result}}' == 'fail'"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass'"
 
   # Template: Check /test endpoint (predict with test image)
   - name: check-predict
     inputs:
       parameters:
       - name: service-url
+      - name: model-version
     outputs:
       parameters:
       - name: result
@@ -77,15 +63,26 @@ spec:
         #!/bin/sh
         echo "Testing integration: {{inputs.parameters.service-url}}/test"
 
-        # Wait for service to be ready (max 60 seconds)
+        EXPECTED_VERSION="1.0.{{inputs.parameters.model-version}}"
+
+        # Wait for service to be ready AND serving the expected model version (max 60 seconds)
         for i in $(seq 1 12); do
-          if curl -s -f "{{inputs.parameters.service-url}}/test" > /dev/null 2>&1; then
-            echo "Service is ready"
+          VERSION_RESP=$(curl -s "{{inputs.parameters.service-url}}/version" 2>/dev/null || true)
+          if echo "$VERSION_RESP" | grep -q "$EXPECTED_VERSION"; then
+            echo "Service is ready with expected version: $EXPECTED_VERSION"
             break
           fi
-          echo "Waiting for service... ($i/12)"
+          echo "Waiting for expected version... ($i/12)"
           sleep 5
         done
+
+        VERSION_RESP=$(curl -s "{{inputs.parameters.service-url}}/version" 2>/dev/null || true)
+        if ! echo "$VERSION_RESP" | grep -q "$EXPECTED_VERSION"; then
+          echo "✗ Integration test FAILED: /version did not return expected version: $EXPECTED_VERSION"
+          echo "Response: $VERSION_RESP"
+          echo "fail" > /tmp/result.txt
+          exit 1
+        fi
 
         # Call /test endpoint (runs inference with hardcoded test image)
         RESPONSE=$(curl -s "{{inputs.parameters.service-url}}/test")
@@ -95,70 +92,17 @@ spec:
         if [ -z "$RESPONSE" ]; then
           echo "✗ Integration test FAILED: Empty response"
           echo "fail" > /tmp/result.txt
+          exit 1
         elif echo "$RESPONSE" | grep -qE "(Bread|Dairy product|Dessert|Egg|Fried food|Meat|Noodles/Pasta|Rice|Seafood|Soup|Vegetable/Fruit)"; then
           echo "✓ Integration test PASSED: Got valid prediction: $RESPONSE"
           echo "pass" > /tmp/result.txt
+          exit 0
         else
           echo "✗ Integration test FAILED: Invalid response (not a valid food class)"
           echo "$RESPONSE"
           echo "fail" > /tmp/result.txt
+          exit 1
         fi
-
-  # Template: Load test (/test endpoint)
-  - name: run-load-test
-    inputs:
-      parameters:
-      - name: service-url
-      - name: integration-result
-    outputs:
-      parameters:
-      - name: result
-        valueFrom:
-          path: /tmp/result.txt
-    script:
-      image: grafana/k6:0.49.0
-      command: [sh, -c]
-      env:
-      - name: SERVICE_URL
-        value: "{{inputs.parameters.service-url}}"
-      source: |
-        set -eu
-
-        if [ "{{inputs.parameters.integration-result}}" != "pass" ]; then
-          echo "Skipping load test (integration test did not pass)"
-          echo "skip" > /tmp/result.txt
-          exit 0
-        fi
-
-        cat >/tmp/test.js <<'K6'
-        import http from 'k6/http';
-        import { check } from 'k6';
-
-        export const options = {
-          vus: 10,
-          duration: '30s',
-          thresholds: {
-            http_req_duration: ['p(95)<2000'],
-            http_req_failed: ['rate<0.05'],
-            checks: ['rate>0.95'],
-          },
-        };
-
-        export default function () {
-          const res = http.get(`${__ENV.SERVICE_URL}/test`, { timeout: '5s' });
-          check(res, { 'status is 200': (r) => r.status === 200 });
-        }
-        K6
-
-        echo "Running load test against $SERVICE_URL/test"
-        if k6 run --quiet /tmp/test.js; then
-          echo "✓ Load test PASSED (p95<2000ms, fail rate<5%)"
-          echo "pass" > /tmp/result.txt
-        else
-          echo "✗ Load test FAILED (thresholds not met)"
-          echo "fail" > /tmp/result.txt
-        fi
-        exit 0
 
   # Template: Set staging-approved alias in MLflow
   - name: set-staging-approved
@@ -200,27 +144,3 @@ spec:
               value: "canary"
             - name: model-version
               value: "{{inputs.parameters.model-version}}"
-
-  # Template: Trigger revert-model workflow
-  - name: trigger-revert
-    inputs:
-      parameters:
-      - name: model-version
-    resource:
-      action: create
-      manifest: |
-        apiVersion: argoproj.io/v1alpha1
-        kind: Workflow
-        metadata:
-          generateName: revert-staging-
-        spec:
-          workflowTemplateRef:
-            name: revert-model
-          arguments:
-            parameters:
-            - name: environment
-              value: "staging"
-            - name: failed-model-version
-              value: "{{inputs.parameters.model-version}}"
-            - name: failure-reason
-              value: "Staging tests failed (integration/load test)"

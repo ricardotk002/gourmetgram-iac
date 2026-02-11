@@ -4,7 +4,7 @@
   vars:
     repo_url: https://github.com/teaching-on-testbeds/gourmetgram-iac.git
     repo_dest: /tmp/gourmetgram-iac
-    workflow_file: workflows/build-initial.yaml   
+    workflow_file: workflows/build-initial-buildkit.yaml
     workflow_name: build-initial
     argo_namespace: argo
 

@@ -61,14 +61,20 @@ spec:
         - --local
         - dockerfile=/mnt/workspace
         - --output
-        - 'type=image,"name=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.0,registry.kube-system.svc.cluster.local:5000/gourmetgram-app:canary-1.0.0,registry.kube-system.svc.cluster.local:5000/gourmetgram-app:production-1.0.0",push=true,registry.insecure=true'
+        - >-
+          type=image,
+          "name=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.0,
+          registry.kube-system.svc.cluster.local:5000/gourmetgram-app:canary-1.0.0,
+          registry.kube-system.svc.cluster.local:5000/gourmetgram-app:production-1.0.0",
+          push=true,
+          registry.insecure=true
       resources:
         requests:
-          memory: "2Gi"
+          memory: "3Gi"
           cpu: "500m"
         limits:
-          memory: "4Gi"
-          cpu: "2"
+          memory: "3Gi"
+          cpu: "1"
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000

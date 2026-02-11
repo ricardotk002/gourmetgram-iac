@@ -10,9 +10,9 @@ spec:
     - name: staging-namespace
       value: "gourmetgram-staging"
     - name: staging-service
-      value: "gourmetgram-staging-service"
+      value: "gourmetgram-app"
     - name: staging-port
-      value: "8000"
+      value: "8082"
 
   templates:
   - name: test-flow
@@ -48,20 +48,25 @@ spec:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "{{steps.integration-test.outputs.result}} == pass && {{steps.resource-test.outputs.result}} == pass && {{steps.load-test.outputs.result}} == pass"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'pass' && '{{steps.resource-test.outputs.parameters.result}}' == 'pass' && '{{steps.load-test.outputs.parameters.result}}' == 'pass'"
         - name: revert-on-failure
           template: trigger-revert
           arguments:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-          when: "{{steps.integration-test.outputs.result}} == fail || {{steps.resource-test.outputs.result}} == fail || {{steps.load-test.outputs.result}} == fail"
+          when: "'{{steps.integration-test.outputs.parameters.result}}' == 'fail' || '{{steps.resource-test.outputs.parameters.result}}' == 'fail' || '{{steps.load-test.outputs.parameters.result}}' == 'fail'"
 
   # Template: Check /test endpoint (predict with test image)
   - name: check-predict
     inputs:
       parameters:
       - name: service-url
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/result.txt
     script:
       image: curlimages/curl:latest
       command: [sh]
@@ -86,14 +91,14 @@ spec:
         # Verify response is not empty and is a valid food class name
         if [ -z "$RESPONSE" ]; then
           echo "✗ Integration test FAILED: Empty response"
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         elif echo "$RESPONSE" | grep -qE "(Bread|Dairy product|Dessert|Egg|Fried food|Meat|Noodles/Pasta|Rice|Seafood|Soup|Vegetable/Fruit)"; then
           echo "✓ Integration test PASSED: Got valid prediction: $RESPONSE"
-          echo "pass"
+          echo "pass" > /tmp/result.txt
         else
           echo "✗ Integration test FAILED: Invalid response (not a valid food class)"
           echo "$RESPONSE"
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         fi
 
   # Template: Check pod status
@@ -101,6 +106,11 @@ spec:
     inputs:
       parameters:
       - name: namespace
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/result.txt
     script:
       image: bitnami/kubectl:latest
       command: [sh]
@@ -109,31 +119,31 @@ spec:
         echo "Checking pod status in namespace {{inputs.parameters.namespace}}"
 
         # Get pod status
-        POD_STATUS=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-staging -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+        POD_STATUS=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-app -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
         echo "Pod status: $POD_STATUS"
 
         if [ "$POD_STATUS" = "Running" ]; then
           # Check for container errors
-          CONTAINER_STATE=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-staging -o jsonpath='{.items[0].status.containerStatuses[0].state}' 2>/dev/null)
+          CONTAINER_STATE=$(kubectl get pods -n {{inputs.parameters.namespace}} -l app=gourmetgram-app -o jsonpath='{.items[0].status.containerStatuses[0].state}' 2>/dev/null)
           echo "Container state: $CONTAINER_STATE"
 
           # Check for OOMKilled
           if echo "$CONTAINER_STATE" | grep -q "OOMKilled"; then
             echo "✗ Resource test FAILED: Container is OOMKilled"
-            echo "fail"
+            echo "fail" > /tmp/result.txt
           else
             echo "✓ Resource test PASSED: Pod is Running"
-            echo "pass"
+            echo "pass" > /tmp/result.txt
           fi
         elif [ "$POD_STATUS" = "Pending" ]; then
           echo "✗ Resource test FAILED: Pod is Pending"
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         elif [ -z "$POD_STATUS" ]; then
           echo "✗ Resource test FAILED: No pod found"
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         else
           echo "✗ Resource test FAILED: Pod status is $POD_STATUS"
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         fi
 
   # Template: Run load test with hey
@@ -141,6 +151,11 @@ spec:
     inputs:
       parameters:
       - name: service-url
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/result.txt
     script:
       image: williamyeh/hey:latest
       command: [sh]
@@ -180,9 +195,9 @@ spec:
 
         if [ "$PASS" = true ]; then
           echo "✓ Load test PASSED: Success rate ${SUCCESS_RATE}%, P95 ${P95_MS}ms"
-          echo "pass"
+          echo "pass" > /tmp/result.txt
         else
-          echo "fail"
+          echo "fail" > /tmp/result.txt
         fi
 
   # Template: Trigger promote-model workflow

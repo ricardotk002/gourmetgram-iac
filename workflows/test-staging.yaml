@@ -32,6 +32,8 @@ spec:
             parameters:
             - name: namespace
               value: "{{workflow.parameters.staging-namespace}}"
+            - name: app
+              value: "{{workflow.parameters.staging-service}}"
 
       # Step 3: Load test - verify p95 latency < 2000ms, success rate > 95%
       - - name: load-test
@@ -109,6 +111,123 @@ spec:
           echo "$RESPONSE"
               echo "fail" > /tmp/result.txt
           fi
+
+  # Template: Check pod status (Running + Ready)
+  - name: check-pod-status
+    inputs:
+      parameters:
+      - name: namespace
+      - name: app
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/result.txt
+    script:
+      image: bitnami/kubectl:1.29.2
+      command: [sh]
+      source: |
+        #!/bin/sh
+        set -eu
+
+        NS="{{inputs.parameters.namespace}}"
+        APP="{{inputs.parameters.app}}"
+
+        echo "Checking pod status in namespace=$NS label app=$APP"
+
+        if ! kubectl get pods -n "$NS" -l "app=$APP" >/tmp/pods.txt 2>/tmp/kubectl.err; then
+          echo "✗ Resource test FAILED: unable to list pods"
+          cat /tmp/kubectl.err || true
+          echo "fail" > /tmp/result.txt
+          exit 0
+        fi
+
+        POD_NAMES=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{.items[*].metadata.name}' 2>/tmp/kubectl.err || true)
+        if [ -z "$POD_NAMES" ]; then
+          echo "✗ Resource test FAILED: no pods found"
+          echo "fail" > /tmp/result.txt
+          exit 0
+        fi
+
+        PHASES=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' 2>/tmp/kubectl.err || true)
+        READY=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.containerStatuses[*]}{.ready}{" "}{end}{"\n"}{end}' 2>/tmp/kubectl.err || true)
+        REASONS=$(kubectl get pods -n "$NS" -l "app=$APP" -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{.state.terminated.reason}{"\n"}{end}{end}' 2>/tmp/kubectl.err || true)
+
+        echo "Pod phases:"
+        echo "$PHASES" || true
+        echo "Pod readiness:"
+        echo "$READY" || true
+
+        if echo "$PHASES" | grep -vE ' Running$' >/dev/null 2>&1; then
+          echo "✗ Resource test FAILED: non-Running pods detected"
+          echo "fail" > /tmp/result.txt
+          exit 0
+        fi
+
+        if echo "$READY" | grep -q ' false'; then
+          echo "✗ Resource test FAILED: unready containers detected"
+          echo "fail" > /tmp/result.txt
+          exit 0
+        fi
+
+        if echo "$REASONS" | grep -Eq '(CrashLoopBackOff|OOMKilled|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError|Error)'; then
+          echo "✗ Resource test FAILED: unhealthy container reason detected"
+          echo "$REASONS" | grep -E '(CrashLoopBackOff|OOMKilled|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError|Error)' || true
+          echo "fail" > /tmp/result.txt
+          exit 0
+        fi
+
+        echo "✓ Resource test PASSED: pods Running and Ready"
+        echo "pass" > /tmp/result.txt
+
+  # Template: Load test (/test endpoint)
+  - name: run-load-test
+    inputs:
+      parameters:
+      - name: service-url
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/result.txt
+    script:
+      image: grafana/k6:0.49.0
+      command: [sh, -c]
+      env:
+      - name: SERVICE_URL
+        value: "{{inputs.parameters.service-url}}"
+      source: |
+        set -eu
+
+        cat >/tmp/test.js <<'K6'
+        import http from 'k6/http';
+        import { check } from 'k6';
+
+        export const options = {
+          vus: 10,
+          duration: '30s',
+          thresholds: {
+            http_req_duration: ['p(95)<2000'],
+            http_req_failed: ['rate<0.05'],
+            checks: ['rate>0.95'],
+          },
+        };
+
+        export default function () {
+          const res = http.get(`${__ENV.SERVICE_URL}/test`, { timeout: '5s' });
+          check(res, { 'status is 200': (r) => r.status === 200 });
+        }
+        K6
+
+        echo "Running load test against $SERVICE_URL/test"
+        if k6 run --quiet /tmp/test.js; then
+          echo "✓ Load test PASSED (p95<2000ms, fail rate<5%)"
+          echo "pass" > /tmp/result.txt
+        else
+          echo "✗ Load test FAILED (thresholds not met)"
+          echo "fail" > /tmp/result.txt
+        fi
+        exit 0
 
   # Template: Set staging-approved alias in MLflow
   - name: set-staging-approved

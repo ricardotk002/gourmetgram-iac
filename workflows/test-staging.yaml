@@ -32,6 +32,8 @@ spec:
             parameters:
             - name: service-url
               value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
+            - name: integration-result
+              value: "{{steps.integration-test.outputs.parameters.result}}"
 
       # Step 3: Mark as approved in MLflow if all tests pass
       - - name: mark-staging-approved
@@ -99,14 +101,15 @@ spec:
         else
           echo "✗ Integration test FAILED: Invalid response (not a valid food class)"
           echo "$RESPONSE"
-              echo "fail" > /tmp/result.txt
-          fi
+          echo "fail" > /tmp/result.txt
+        fi
 
   # Template: Load test (/test endpoint)
   - name: run-load-test
     inputs:
       parameters:
       - name: service-url
+      - name: integration-result
     outputs:
       parameters:
       - name: result
@@ -120,6 +123,12 @@ spec:
         value: "{{inputs.parameters.service-url}}"
       source: |
         set -eu
+
+        if [ "{{inputs.parameters.integration-result}}" != "pass" ]; then
+          echo "Skipping load test (integration test did not pass)"
+          echo "skip" > /tmp/result.txt
+          exit 0
+        fi
 
         cat >/tmp/test.js <<'K6'
         import http from 'k6/http';

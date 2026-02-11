@@ -60,6 +60,7 @@ spec:
         image: traefik:v3.0
         args:
         - --providers.kubernetesgateway
+        - --providers.kubernetesgateway.entrypoints=web
         - --entrypoints.web.address=:8000
         ports:
         - containerPort: 8000

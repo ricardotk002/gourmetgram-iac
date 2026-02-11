@@ -98,8 +98,8 @@
                     fallthrough in-addr.arpa ip6.arpa
                   }
                   prometheus :9153
-                  template IN AAAA {
-                    rcode NXDOMAIN
+                  template ANY AAAA {
+                    rcode NOERROR
                   }
                   forward . 8.8.8.8 1.1.1.1 {
                     prefer_udp

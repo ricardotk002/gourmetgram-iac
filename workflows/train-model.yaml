@@ -41,6 +41,10 @@ spec:
       # Step 2: Conditionally rebuild training image if code changed
       - - name: rebuild-training-image
           template: buildkit-rootless
+          arguments:
+            parameters:
+            - name: git-commit
+              value: "{{steps.check-code-changes.outputs.parameters.git-commit}}"
           when: "'{{steps.check-code-changes.outputs.parameters.needs-rebuild}}' == 'true'"
       # Step 3: Run training
       - - name: runtraining
@@ -120,7 +124,12 @@ spec:
           echo "$GIT_COMMIT" > /var/run/argo/outputs/parameters/git-commit
           
           # Determine if rebuild is needed
-          if [ -z "$IMAGE_COMMIT" ] || [ "$IMAGE_COMMIT" != "$GIT_COMMIT" ]; then
+          # Always rebuild for non-default branches
+          BRANCH="{{inputs.parameters.branch}}"
+          if [ "$BRANCH" != "mlops" ]; then
+            echo "Rebuild needed: non-default branch '$BRANCH' specified"
+            echo "true" > /var/run/argo/outputs/parameters/needs-rebuild
+          elif [ -z "$IMAGE_COMMIT" ] || [ "$IMAGE_COMMIT" != "$GIT_COMMIT" ]; then
             echo "Rebuild needed: code has changed or image not found"
             echo "true" > /var/run/argo/outputs/parameters/needs-rebuild
           else
@@ -133,6 +142,9 @@ spec:
 
   # Template: Build training container image using buildkit
   - name: buildkit-rootless
+    inputs:
+      parameters:
+      - name: git-commit
     retryStrategy:
       limit: "3"
       retryPolicy: "Always"
@@ -154,7 +166,7 @@ spec:
         - --local
         - dockerfile=/mnt/workspace
         - --opt
-        - label:git.commit={{steps.check-code-changes.outputs.parameters.git-commit}}
+        - label:git.commit={{inputs.parameters.git-commit}}
         - --output
         - type=image,name=registry.kube-system.svc.cluster.local:5000/gourmetgram-train:latest,push=true,registry.insecure=true
         - --export-cache

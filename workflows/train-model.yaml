@@ -16,7 +16,7 @@ spec:
             parameters:
             - name: model-version
               value: "{{steps.runtraining.outputs.parameters.modelversion}}"
-          when: "{{steps.runtraining.outputs.parameters.modelversion}} != ''"
+          when: "'{{steps.runtraining.outputs.parameters.modelversion}}' != ''"
 
   - name: run-training
     outputs:

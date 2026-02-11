@@ -119,7 +119,7 @@
   become: yes
   tasks:
     - name: Get CoreDNS service ClusterIP
-      command: kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+      command: kubectl -n kube-system get svc coredns -o jsonpath='{.spec.clusterIP}'
       register: coredns_ip
       changed_when: false
 

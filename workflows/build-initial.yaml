@@ -28,7 +28,7 @@ spec:
       args:
         - |
           set -eu
-          git clone --branch master https://github.com/teaching-on-testbeds/gourmetgram.git /mnt/workspace
+          git clone --branch workflow-init https://github.com/teaching-on-testbeds/gourmetgram.git /mnt/workspace
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace

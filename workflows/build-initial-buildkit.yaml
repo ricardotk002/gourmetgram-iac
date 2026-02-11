@@ -69,7 +69,7 @@ spec:
         - --depth
         - "1"
         - --branch
-        - master
+        - workflow-init
         - --single-branch
         - https://github.com/teaching-on-testbeds/gourmetgram.git
         - .

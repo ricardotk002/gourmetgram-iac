@@ -32,6 +32,7 @@ resource "openstack_networking_port_v2" "sharednet1_ports" {
       data.openstack_networking_secgroup_v2.allow_8000.id,
       data.openstack_networking_secgroup_v2.allow_8080.id,
       data.openstack_networking_secgroup_v2.allow_8081.id,
+      data.openstack_networking_secgroup_v2.allow_8082.id,
       data.openstack_networking_secgroup_v2.allow_http_80.id,
       data.openstack_networking_secgroup_v2.allow_9090.id
     ]
@@ -66,4 +67,3 @@ resource "openstack_networking_floatingip_v2" "floating_ip" {
   description = "MLOps IP for ${var.suffix}"
   port_id     = openstack_networking_port_v2.sharednet1_ports["node1"].id
 }
-

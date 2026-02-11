@@ -174,7 +174,7 @@ spec:
         value: --oci-worker-no-process-sandbox
       resources:
         requests:
-          memory: "2.5Gi"
+          memory: "2Gi"
           cpu: "500m"
         limits:
           memory: "4Gi"

@@ -69,12 +69,12 @@ spec:
               value: "{{workflow.parameters.model-version}}"
 
   - name: git-clone
-    retries:
-      limit: 5
+    retryStrategy:
+      limit: "5"
       retryPolicy: "Always"
       backoff:
         duration: "10s"
-        factor: 2
+        factor: "2"
     container:
       image: alpine/git:v2.26.2
       workingDir: /mnt/workspace
@@ -98,12 +98,12 @@ spec:
         mountPath: /mnt/workspace
 
   - name: download-model
-    retries:
-      limit: 5
+    retryStrategy:
+      limit: "5"
       retryPolicy: "Always"
       backoff:
         duration: "10s"
-        factor: 2
+        factor: "2"
     inputs:
       parameters:
       - name: model-version
@@ -143,12 +143,12 @@ spec:
         mountPath: /tmp/pip-cache
 
   - name: buildkit-rootless
-    retries:
-      limit: 3
+    retryStrategy:
+      limit: "3"
       retryPolicy: "Always"
       backoff:
         duration: "30s"
-        factor: 2
+        factor: "2"
     inputs:
       parameters:
       - name: model-version
@@ -194,12 +194,12 @@ spec:
         mountPath: /home/user/.local/share/buildkit
 
   - name: set-mlflow-alias
-    retries:
-      limit: 5
+    retryStrategy:
+      limit: "5"
       retryPolicy: "Always"
       backoff:
         duration: "10s"
-        factor: 2
+        factor: "2"
     inputs:
       parameters:
       - name: model-version

@@ -3,10 +3,17 @@ kind: WorkflowTemplate
 metadata:
   name: build-container-image
 spec:
-  entrypoint: kaniko-build-flow
+  entrypoint: buildkit-rootless-build-flow
   arguments:
     parameters:
     - name: model-version
+
+  # Compatibility: some clusters ignore seccompProfile/appArmorProfile fields
+  # (or enforce defaults) unless annotations are also set.
+  podMetadata:
+    annotations:
+      seccomp.security.alpha.kubernetes.io/pod: unconfined
+      container.apparmor.security.beta.kubernetes.io/main: unconfined
 
   volumeClaimTemplates:
   - metadata:
@@ -17,8 +24,14 @@ spec:
         requests:
           storage: 2Gi
 
+  volumes:
+  - name: buildkitd
+    emptyDir: {}
+  - name: pip-cache
+    emptyDir: {}
+
   templates:
-  - name: kaniko-build-flow
+  - name: buildkit-rootless-build-flow
     steps:
       - - name: clone-repo
           template: git-clone
@@ -28,8 +41,8 @@ spec:
             parameters:
             - name: model-version
               value: "{{workflow.parameters.model-version}}"
-      - - name: kaniko-build
-          template: kaniko
+      - - name: buildkit-build
+          template: buildkit-rootless
           arguments:
             parameters:
             - name: model-version
@@ -56,26 +69,55 @@ spec:
               value: "{{workflow.parameters.model-version}}"
 
   - name: git-clone
+    retries:
+      limit: 5
+      retryPolicy: "Always"
+      backoff:
+        duration: "10s"
+        factor: 2
     container:
-      image: alpine/git
-      command: [sh, -c]
+      image: alpine/git:v2.26.2
+      workingDir: /mnt/workspace
+      env:
+      - name: GIT_TERMINAL_PROMPT
+        value: "0"
+      command: [git]
       args:
-        - |
-          set -eu
-          git clone --branch workflow https://github.com/teaching-on-testbeds/gourmetgram.git /mnt/workspace
+        - clone
+        - --depth
+        - "1"
+        - --filter=blob:none
+        - --no-tags
+        - --single-branch
+        - --branch
+        - workflow
+        - https://github.com/teaching-on-testbeds/gourmetgram.git
+        - .
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
 
   - name: download-model
+    retries:
+      limit: 5
+      retryPolicy: "Always"
+      backoff:
+        duration: "10s"
+        factor: 2
     inputs:
       parameters:
       - name: model-version
     container:
       image: python:3.11-slim
+      env:
+      - name: PIP_DISABLE_PIP_VERSION_CHECK
+        value: "1"
+      - name: PIP_CACHE_DIR
+        value: /tmp/pip-cache
       command: [sh, -c]
       args:
         - |
+          set -eu
           pip install mlflow-skinny==3.9.0
           export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
           mkdir -p /tmp/mlflow_model
@@ -97,31 +139,67 @@ spec:
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
+      - name: pip-cache
+        mountPath: /tmp/pip-cache
 
-  - name: kaniko
+  - name: buildkit-rootless
+    retries:
+      limit: 3
+      retryPolicy: "Always"
+      backoff:
+        duration: "30s"
+        factor: 2
     inputs:
       parameters:
       - name: model-version
     container:
-      image: gcr.io/kaniko-project/executor:latest
+      image: moby/buildkit:rootless
+      env:
+      - name: BUILDKITD_FLAGS
+        value: --oci-worker-no-process-sandbox
       resources:
         requests:
-          memory: "2Gi"
+          memory: "3Gi"
           cpu: "500m"
         limits:
           memory: "4Gi"
           cpu: "2"
 
+      command: [buildctl-daemonless.sh]
       args:
-        - --dockerfile=/mnt/workspace/Dockerfile
-        - --context=/mnt/workspace
-        - --destination=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.model-version}}
-        - --insecure
+        - build
+        - --frontend
+        - dockerfile.v0
+        - --local
+        - context=/mnt/workspace
+        - --local
+        - dockerfile=/mnt/workspace
+        - --output
+        - type=image,name=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:staging-1.0.{{inputs.parameters.model-version}},push=true,registry.insecure=true
+        - --export-cache
+        - type=registry,ref=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:buildcache,mode=max,registry.insecure=true
+        - --import-cache
+        - type=registry,ref=registry.kube-system.svc.cluster.local:5000/gourmetgram-app:buildcache,registry.insecure=true
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
+      - name: buildkitd
+        mountPath: /home/user/.local/share/buildkit
 
   - name: set-mlflow-alias
+    retries:
+      limit: 5
+      retryPolicy: "Always"
+      backoff:
+        duration: "10s"
+        factor: 2
     inputs:
       parameters:
       - name: model-version
@@ -129,9 +207,14 @@ spec:
       image: python:3.11-slim
       command: [sh, -c]
       source: |
+        export PIP_DISABLE_PIP_VERSION_CHECK=1
+        export PIP_CACHE_DIR=/tmp/pip-cache
         pip install mlflow-skinny==3.9.0 > /dev/null
         export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
         python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='staging', version='{{inputs.parameters.model-version}}')"
+      volumeMounts:
+      - name: pip-cache
+        mountPath: /tmp/pip-cache
   
   - name: trigger-deploy
     inputs:

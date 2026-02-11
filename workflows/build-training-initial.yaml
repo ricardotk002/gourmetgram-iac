@@ -38,21 +38,8 @@ spec:
       command: [sh, -c]
       args:
         - |
-          MAX_RETRIES=5
-          i=1
-
-          while [ $i -le $MAX_RETRIES ]; do
-            echo "Attempt $i of $MAX_RETRIES: Cloning repo..."
-            git clone --branch {{inputs.parameters.branch}} https://github.com/teaching-on-testbeds/gourmetgram-train.git /mnt/workspace && break
-            echo "Git clone failed. Retrying in 5 seconds..."
-            i=$((i + 1))
-            sleep 5
-          done
-
-          if [ ! -d /mnt/workspace/.git ]; then
-            echo "Git clone failed after $MAX_RETRIES attempts."
-            exit 1
-          fi
+          set -eu
+          git clone --branch "{{inputs.parameters.branch}}" https://github.com/teaching-on-testbeds/gourmetgram-train.git /mnt/workspace
       volumeMounts:
       - name: workdir
         mountPath: /mnt/workspace
@@ -60,6 +47,13 @@ spec:
   - name: kaniko
     container:
       image: gcr.io/kaniko-project/executor:latest
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "500m"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
       args:
         - --dockerfile=/mnt/workspace/Dockerfile
         - --context=/mnt/workspace

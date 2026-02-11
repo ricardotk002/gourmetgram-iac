@@ -17,15 +17,7 @@ spec:
   templates:
   - name: test-flow
     steps:
-      # Step 1: Integration test - verify /test endpoint returns valid prediction
-      - - name: integration-test
-          template: check-predict
-          arguments:
-            parameters:
-            - name: service-url
-              value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
-
-      # Step 2: Resource test - verify pod is running (not OOMKilled/Pending/CrashLoopBackOff)
+      # Step 1: Resource test - verify pod exists, is Running and Ready
       - - name: resource-test
           template: check-pod-status
           arguments:
@@ -34,6 +26,14 @@ spec:
               value: "{{workflow.parameters.staging-namespace}}"
             - name: app
               value: "{{workflow.parameters.staging-service}}"
+
+      # Step 2: Integration test - verify /test endpoint returns valid prediction
+      - - name: integration-test
+          template: check-predict
+          arguments:
+            parameters:
+            - name: service-url
+              value: "http://{{workflow.parameters.staging-service}}.{{workflow.parameters.staging-namespace}}.svc.cluster.local:{{workflow.parameters.staging-port}}"
 
       # Step 3: Load test - verify p95 latency < 2000ms, success rate > 95%
       - - name: load-test

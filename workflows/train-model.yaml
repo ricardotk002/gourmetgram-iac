@@ -276,3 +276,7 @@ spec:
         python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='development', version='{{inputs.parameters.model-version}}')"
 
         echo "Updated MLflow development alias to version {{inputs.parameters.model-version}}"
+      volumeMounts:
+      - name: docker-config
+        mountPath: /home/user/.docker
+        readOnly: true

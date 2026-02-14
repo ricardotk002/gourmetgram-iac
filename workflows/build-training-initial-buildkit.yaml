@@ -28,6 +28,12 @@ spec:
   volumes:
   - name: buildkitd
     emptyDir: {}
+  - name: docker-config
+    secret:
+      secretName: dockerhub-creds
+      items:
+        - key: .dockerconfigjson
+          path: config.json
 
   templates:
   - name: buildkit-rootless-build-flow
@@ -123,3 +129,6 @@ spec:
         mountPath: /mnt/workspace
       - name: buildkitd
         mountPath: /home/user/.local/share/buildkit
+      - name: docker-config
+        mountPath: /home/user/.docker
+        readOnly: true

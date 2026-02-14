@@ -210,6 +210,9 @@ spec:
         mountPath: /mnt/workspace
       - name: buildkitd
         mountPath: /home/user/.local/share/buildkit
+      - name: docker-config
+        mountPath: /home/user/.docker
+        readOnly: true
 
   - name: run-training
     outputs:

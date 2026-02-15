@@ -4,6 +4,8 @@ metadata:
   name: test-staging
 spec:
   entrypoint: test-flow
+  imagePullSecrets:
+    - name: dockerhub-creds
   arguments:
     parameters:
     - name: model-version

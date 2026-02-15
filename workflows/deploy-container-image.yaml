@@ -4,6 +4,8 @@ metadata:
   name: deploy-container-image
 spec:
   entrypoint: deploy
+  imagePullSecrets:
+    - name: dockerhub-creds
   arguments:
     parameters:
     - name: environment

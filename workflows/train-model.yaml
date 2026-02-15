@@ -4,6 +4,8 @@ metadata:
   name: train-model
 spec:
   entrypoint: training-and-build
+  imagePullSecrets:
+    - name: dockerhub-creds
   arguments:
     parameters:
     - name: branch

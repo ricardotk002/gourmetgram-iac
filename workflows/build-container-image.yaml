@@ -7,6 +7,8 @@ spec:
   arguments:
     parameters:
     - name: model-version
+  imagePullSecrets:
+    - name: dockerhub-creds
 
   # Compatibility: some clusters ignore seccompProfile/appArmorProfile fields
   # (or enforce defaults) unless annotations are also set.

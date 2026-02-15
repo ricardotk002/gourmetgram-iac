@@ -103,6 +103,10 @@ spec:
           echo "fail" > /tmp/result.txt
           exit 1
         fi
+    volumeMounts:
+    - name: docker-config
+      mountPath: /home/user/.docker
+      readOnly: true
 
   # Template: Set staging-approved alias in MLflow
   - name: set-staging-approved
@@ -120,6 +124,10 @@ spec:
 
         echo "✓ Model version {{inputs.parameters.model-version}} marked as 'staging-approved' in MLflow"
         echo "This version has successfully passed all staging tests"
+    volumeMounts:
+    - name: docker-config
+      mountPath: /home/user/.docker
+      readOnly: true
 
   # Template: Trigger promote-model workflow
   - name: trigger-promote

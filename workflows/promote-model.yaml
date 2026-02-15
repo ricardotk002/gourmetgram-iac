@@ -9,7 +9,13 @@ spec:
     - name: source-environment
     - name: target-environment
     - name: model-version
-
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: dockerhub-creds
+      items:
+        - key: .dockerconfigjson
+          path: config.json
   templates:
   - name: promote-flow
     steps:

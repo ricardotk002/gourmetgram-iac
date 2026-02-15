@@ -13,6 +13,13 @@ spec:
       value: "gourmetgram-app"
     - name: staging-port
       value: "8082"
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: dockerhub-creds
+      items:
+        - key: .dockerconfigjson
+          path: config.json
 
   templates:
   - name: test-flow

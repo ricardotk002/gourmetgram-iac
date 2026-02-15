@@ -9,13 +9,8 @@ spec:
     - name: source-environment
     - name: target-environment
     - name: model-version
-  volumes:
-  - name: docker-config
-    secret:
-      secretName: dockerhub-creds
-      items:
-        - key: .dockerconfigjson
-          path: config.json
+  imagePullSecrets:
+    - name: dockerhub-creds
   templates:
   - name: promote-flow
     steps:
@@ -62,10 +57,6 @@ spec:
             --dest-tls-verify=false \
             docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.source-environment}}-1.0.{{inputs.parameters.model-version}} \
             docker://registry.kube-system.svc.cluster.local:5000/gourmetgram-app:{{inputs.parameters.target-environment}}-1.0.{{inputs.parameters.model-version}}
-    volumeMounts:
-    - name: docker-config
-      mountPath: /home/user/.docker
-      readOnly: true
 
   - name: set-mlflow-alias
     inputs:
@@ -79,10 +70,6 @@ spec:
         pip install mlflow-skinny==3.9.0 > /dev/null
         export MLFLOW_TRACKING_URI=http://mlflow.gourmetgram-platform.svc.cluster.local:8000
         python -c "import mlflow; client = mlflow.tracking.MlflowClient(); client.set_registered_model_alias(name='GourmetGramFood11Model', alias='{{inputs.parameters.alias}}', version='{{inputs.parameters.model-version}}')"
-    volumeMounts:
-    - name: docker-config
-      mountPath: /home/user/.docker
-      readOnly: true
 
   - name: trigger-deploy
     inputs:
